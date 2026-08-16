@@ -1,0 +1,21 @@
+bookID,title,authors,average_rating,isbn,isbn13,language_code,num_pages,ratings_count,text_reviews_count,publication_date,publisher
+50000,The C Programming Language,Brian W. Kernighan/Dennis MacAlistair Ritchie,0.0,,,eng,278,455,45,1/1/1978,Unknown
+50001,Aplikasi Analisis Multivariate Dengan Program IBM SPSS 25 (9th ed),"Imam ghozali, 2018",0.0,,,eng,473,2171,217,1/1/2018,Unknown
+50002,The C++ programming language,Bjarne Stroustrup,0.0,,,eng,409,1871,187,1/1/1986,Unknown
+50003,Object-oriented Programming with C++,E. Balagurusamy,0.0,,,eng,301,7112,711,1/1/1997,Unknown
+50004,Programming Python,Mark Lutz,0.0,,,eng,466,8979,897,1/1/1996,Unknown
+50005,The art of computer programming,Donald Knuth,0.0,,,eng,422,5255,525,1/1/1968,Unknown
+50006,The Program,Suzanne Young,0.0,,,eng,277,5696,569,1/1/2013,Unknown
+50007,Core Python Programming,R. Nageswara Rao,0.0,,,eng,439,4922,492,1/1/2016,Unknown
+50008,Programming in ANSI C,E. Balagurusamy,0.0,,,eng,418,9653,965,1/1/1994,Unknown
+50009,C++,Paul J. Deitel/Harvey M. Deitel,0.0,,,eng,269,8993,899,1/1/1996,Unknown
+50010,Structure and Interpretation of Computer Programs (SICP),Harold Abelson/Gerald Jay Sussman/Julie Sussman,0.0,,,eng,465,6740,674,1/1/1985,Unknown
+50011,Learning Python,Mark Lutz/David Ascher,0.0,,,eng,253,2872,287,1/1/1999,Unknown
+50012,Pre-release center program test design,Unknown,0.0,,,eng,479,7235,723,1/1/1980,Unknown
+50013,C++ Programming,D. S. Malik,0.0,,,eng,467,6455,645,1/1/2004,Unknown
+50014,C programming,K. N. King,0.0,,,eng,220,1186,118,1/1/1996,Unknown
+50015,Programming with Java,E. Balagurusamy,0.0,,,eng,476,8606,860,1/1/2001,Unknown
+50016,Microprocessors and interfacing,Douglas V. Hall/Andrew L. Rood,0.0,,,eng,250,7041,704,1/1/1900,Unknown
+50017,C how to program,Harvey M. Deitel/Paul J. Deitel/Abbey Deitel,0.0,,,eng,293,4482,448,1/1/1992,Unknown
+50018,Extreme programming explained,Kent Beck/Cynthia Andres,0.0,,,eng,367,1106,110,1/1/1999,Unknown
+50019,"Microprocessor Architecture, Programming, and Applications with the 8085",Ramesh S. Gaonkar,0.0,,,eng,382,6827,682,1/1/1996,Unknown
