@@ -1,1 +1,1 @@
-# bookrating_pridction
+# book_rating_pridction
