@@ -1,0 +1,310 @@
+<meta charset="utf-8">
+<title>Book Rating Prediction — Project Report</title>
+<style>
+  @page { size: A4; margin: 20mm 18mm; }
+  html { font-size: 11pt; }
+  body {
+    font-family: "Palatino Linotype", Palatino, Georgia, serif;
+    line-height: 1.55; color: #1a1a1a; max-width: 42em; margin: 0 auto; padding: 2em 1em;
+  }
+  h1 { font-size: 1.9em; margin: 0 0 .2em; line-height: 1.2; }
+  h2 { font-size: 1.3em; margin: 1.8em 0 .5em; padding-bottom: .2em;
+       border-bottom: 1.5px solid #7a1f3d; color: #7a1f3d; page-break-after: avoid; }
+  h3 { font-size: 1.08em; margin: 1.3em 0 .4em; color: #333; page-break-after: avoid; }
+  p { margin: 0 0 .8em; text-align: justify; }
+  .titleblock { text-align: center; margin-bottom: 2.2em; padding-bottom: 1.2em;
+                border-bottom: 2px solid #7a1f3d; }
+  .titleblock .sub { color: #555; font-size: 1.02em; margin: .3em 0 0; }
+  .meta { font-size: .95em; color: #444; margin-top: 1.2em; line-height: 1.7; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: .93em;
+          page-break-inside: avoid; }
+  th, td { border: 1px solid #ccc; padding: .42em .6em; text-align: left; }
+  th { background: #f2eef0; font-weight: bold; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.win td { background: #fdf6f8; font-weight: bold; }
+  code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: .88em;
+         background: #f4f4f4; padding: .1em .3em; border-radius: 3px; }
+  pre { background: #f7f7f7; border-left: 3px solid #7a1f3d; padding: .7em 1em;
+        font-size: .85em; overflow-x: auto; page-break-inside: avoid; }
+  pre code { background: none; padding: 0; }
+  blockquote { border-left: 3px solid #ddd; margin: 1em 0; padding: .3em 0 .3em 1em;
+               color: #444; font-style: italic; }
+  ul, ol { margin: 0 0 .9em; padding-left: 1.4em; }
+  li { margin-bottom: .35em; }
+  .figure { margin: 1.2em 0; text-align: center; page-break-inside: avoid; }
+  .figure img { max-width: 100%; border: 1px solid #ddd; }
+  .caption { font-size: .87em; color: #555; margin-top: .4em; font-style: italic; }
+  .placeholder { border: 2px dashed #bbb; background: #fafafa; padding: 2.5em 1em;
+                 color: #888; font-size: .9em; }
+  .pagebreak { page-break-before: always; }
+  a { color: #7a1f3d; }
+  .repo { background: #f2eef0; border: 1px solid #d8c8d0; padding: .8em 1em;
+          margin: 1.2em 0; font-size: .95em; word-break: break-all; }
+</style>
+
+<div class="titleblock">
+  <h1>Predicting Book Ratings from Catalogue Metadata</h1>
+  <p class="sub">An end-to-end machine learning pipeline and web application</p>
+  <p class="meta">
+    <strong>Sashank Nadavaluru</strong><br>
+    Applied MSc in Data Science &amp; Artificial Intelligence<br>
+    DSTI — School of Engineering<br>
+    Instructor: Hanna Abi Akl
+  </p>
+</div>
+
+<h2>1. Introduction</h2>
+
+<p>The question this project sets out to answer is a deceptively simple one: if you know everything about a book <em>except</em> what is written inside it, how well can you guess how much readers will like it?</p>
+
+<p>This is not a purely academic exercise. A publisher deciding on a print run, or a retailer deciding how much shelf space to allocate, often has to make that call before a single review comes in. What they do have is the catalogue record — page count, imprint, language, publication date, the author line. The practical question is how much of a book's eventual reception is already latent in that record.</p>
+
+<p>The dataset provided contains 11,128 rows and 12 attributes describing books in a Goodreads-style catalogue. Each row holds two identifiers (<code>bookID</code>, and both the 10- and 13-digit ISBN), several descriptive fields (<code>title</code>, <code>authors</code>, <code>publisher</code>, <code>language_code</code>, <code>publication_date</code>, <code>num_pages</code>), two engagement measures (<code>ratings_count</code> and <code>text_reviews_count</code>), and the target, <code>average_rating</code>. The data was supplied raw and unprocessed, which turned out to matter a great deal — a substantial part of the work described below went into establishing what the numbers in this file actually mean before any model saw them.</p>
+
+<p>Framed formally, this is a supervised regression problem. Given a book's metadata, predict a continuous rating on a scale of roughly 1 to 5. The pipeline built to answer it covers exploratory analysis, cleaning, feature engineering, a comparison of four regression algorithms, and deployment of the selected model behind a Streamlit web interface.</p>
+
+<p>I want to state the headline result at the outset rather than build to it, because the interpretation of that result is the most interesting part of this project. The best model explains around 15% of the variance in book ratings. That is a modest number, and I will argue in Section 4 that it is close to the ceiling of what this data can support — and that reporting it honestly is more useful than engineering it upward.</p>
+
+<h2>2. Methodology</h2>
+
+<h3>2.1 Exploratory Data Analysis</h3>
+
+<p>The first obstacle appeared before any analysis: the file would not load cleanly. Several rows contain unescaped commas inside book titles, which pandas reads as extra columns, causing the parser to fail on the row. Loading with <code>on_bad_lines='skip'</code> discards these malformed records rather than aborting, leaving approximately 11,123 usable rows from 11,127 data lines. Losing four records out of eleven thousand is an acceptable price for a DataFrame that loads reliably.</p>
+
+<p>The inspection pass that followed produced one finding that shaped everything afterwards. Running <code>isnull().sum()</code> returned zero across all twelve columns. On a raw, uncleaned file that is not reassuring — it is suspicious. The <code>describe()</code> output explained why: <code>average_rating</code> had a minimum of 0.0, and <code>num_pages</code> could also be 0. The missing data was there, but encoded as placeholder zeros rather than as <code>NaN</code>, so no null check would ever find it.</p>
+
+<p>This distinction is central to the cleaning strategy, because the two zeros do not mean the same thing. A book with a genuine average of zero stars would require every single reader to have rated it at the very bottom of the scale, which effectively does not happen once a book has any ratings at all. A zero there means <em>unrated</em>. A zero in <code>num_pages</code>, by contrast, means the page count was never entered into the catalogue — the book obviously has pages.</p>
+
+<p>Two further problems surfaced. The header for the page-count column is <code>&nbsp;&nbsp;num_pages</code>, with leading whitespace, so any straightforward <code>df['num_pages']</code> access raises a <code>KeyError</code>. And <code>publication_date</code> was still stored as a string, concealing a handful of impossible calendar dates such as <code>11/31/2000</code> and <code>6/31/1982</code> — dates for months that do not have 31 days.</p>
+
+<p>On the distribution of the target itself: <code>average_rating</code> has a mean of 3.93 and a standard deviation of only 0.35, with the middle half of all books falling between 3.77 and 4.14. Ratings are therefore packed into a narrow band. This is characteristic of self-selected rating data, since readers largely choose books they expect to enjoy and rate accordingly. It has a direct consequence for modelling: because the target has so little spread, simply predicting 3.93 for every book is already a strong baseline, and any model has to work hard to beat it. That fact reappears in the results.</p>
+
+<p>The engagement columns are shaped very differently. <code>ratings_count</code> has a median of 745 but a mean of 17,943 and a maximum of 4.6 million — a distribution so heavily skewed that mean and median differ by a factor of twenty. Page counts show the same pattern, with a median of 299 against a maximum of 6,576. This skew is the reason median rather than mean imputation is used below.</p>
+
+<h3>2.2 Data Cleaning</h3>
+
+<p>Each issue identified above was addressed with an explicit rule, applied in a fixed order:</p>
+
+<table>
+  <tr><th>Issue</th><th>Rule applied</th><th class="num">Rows affected</th></tr>
+  <tr><td>Whitespace in column headers</td><td><code>str.strip()</code> on all names</td><td class="num">—</td></tr>
+  <tr><td>Impossible calendar dates</td><td>Parse with <code>errors='coerce'</code>, drop <code>NaT</code></td><td class="num">2</td></tr>
+  <tr><td><code>average_rating == 0</code></td><td>Drop the row</td><td class="num">~25</td></tr>
+  <tr><td><code>num_pages == 0</code></td><td>Median impute, add <code>pages_missing_flag</code></td><td class="num">~76</td></tr>
+</table>
+
+<p>The reason zero ratings are dropped while zero page counts are imputed is worth spelling out, because treating both the same way would be a mistake in either direction. A missing rating is a missing <strong>target</strong>. The row cannot supervise training, and imputing it would mean inventing the exact quantity the model is supposed to learn — effectively teaching the model my own guesses. A missing page count is a missing <strong>feature</strong>. That row still carries a real, observed rating, along with a valid publisher, author, and review count. Discarding it would throw away a genuine label over one absent field.</p>
+
+<p>The general principle: <em>drop missing targets, impute missing features when the rest of the record remains informative.</em></p>
+
+<p>For the imputation itself I used the median rather than the mean, because page counts have a long right tail — omnibus editions and collected works run to several thousand pages — and the mean is pulled upward by them. I also added a binary <code>pages_missing_flag</code> alongside the imputed value. Without that flag, an imputed row becomes indistinguishable from a book that genuinely has the median page count, and the model loses the ability to learn whether the fact of missingness carries any signal of its own. As it happens, that flag turned out to be the least important feature in the final model, but that is a conclusion drawn from evidence rather than an assumption made in advance.</p>
+
+<p>It is worth being clear that none of this is outlier removal. Removing a genuine 2.1 or 4.9 rating because it looks unusual would discard valid observations of the target and quietly narrow the very distribution I am trying to model. The rows removed here were removed because the values in them are not measurements at all.</p>
+
+<h3 class="pagebreak">2.3 Feature Engineering and Selection</h3>
+
+<p>The cleaned data still could not be fed to a model, since several of the most promising columns are strings. The engineering step extracts numeric signal from them, producing a nine-column feature matrix.</p>
+
+<table>
+  <tr><th>Feature</th><th>Origin</th><th>Rationale</th></tr>
+  <tr><td><code>num_pages</code></td><td>Raw (cleaned)</td><td>Proxy for format and genre; novellas, novels, and reference works differ systematically</td></tr>
+  <tr><td><code>ratings_count</code></td><td>Raw</td><td>Popularity and how established the title is</td></tr>
+  <tr><td><code>text_reviews_count</code></td><td>Raw</td><td>Depth of engagement, distinct from raw volume</td></tr>
+  <tr><td><code>author_count</code></td><td>Engineered</td><td>Contributors counted by splitting <code>authors</code> on <code>/</code></td></tr>
+  <tr><td><code>title_length</code></td><td>Engineered</td><td>Character count; a cheap proxy for title style</td></tr>
+  <tr><td><code>publication_year</code></td><td>Engineered</td><td>Era effects, from the parsed date</td></tr>
+  <tr><td><code>language_code_encoded</code></td><td>Engineered</td><td>Label-encoded language</td></tr>
+  <tr><td><code>publisher_encoded</code></td><td>Engineered</td><td>Label-encoded imprint</td></tr>
+  <tr><td><code>pages_missing_flag</code></td><td>Engineered</td><td>Marks median-imputed page counts</td></tr>
+</table>
+
+<p>Two of these decisions involved genuine trade-offs.</p>
+
+<p><strong>Author count over author identity.</strong> The <code>authors</code> field usually looks like <code>J.K. Rowling/Mary GrandPré</code>, joining writers and illustrators with a slash. Encoding individual author identity would almost certainly be more predictive than a simple count — an author's past reception is a strong signal — but with thousands of distinct names, most appearing only once or twice, the encoding would be sparse and would risk leaking target information if computed naively across the full dataset. Counting contributors is a weaker but structurally safe alternative, distinguishing solo works from collaborations and illustrated editions.</p>
+
+<p><strong>Label encoding over one-hot encoding.</strong> This is the choice I would defend most carefully, because it is only valid given the models I selected. Label encoding maps each category to an arbitrary integer, which implies an ordering that does not exist — nothing makes publisher 1,500 "greater than" publisher 20. For a linear model this is genuinely damaging: it fits a single coefficient across a scale that is an artefact of alphabetical ordering. Tree-based models are not affected in the same way, since they split on thresholds and can isolate arbitrary ranges of codes through successive splits without ever treating numeric proximity as similarity.</p>
+
+<p>With roughly 2,200 distinct publishers, one-hot encoding would have expanded the matrix to thousands of sparse columns for around 11,000 rows — a ratio that invites overfitting and slows training considerably. Label encoding keeps the matrix compact, and since the two models I expected to win are both tree ensembles, the ordering objection does not bind. The honest caveat is that this choice partly handicaps the Linear Regression baseline, and I note that again when interpreting its performance.</p>
+
+<p>On selection: the identifier columns — <code>bookID</code>, <code>isbn</code>, and <code>isbn13</code> — were excluded deliberately. They are perfectly unique to each row, which makes them useless for generalisation and actively harmful, since a sufficiently deep tree could use them to memorise individual books rather than learn any pattern.</p>
+
+<h3>2.4 Model Selection, Comparison and Evaluation</h3>
+
+<p>The data was split 80/20 into training and test sets with <code>random_state=42</code>, giving 8,876 books for fitting and 2,220 for evaluation — enough to train on, and enough for a stable estimate. The split is well balanced: the target mean is 3.94 in train against 3.95 in test, with standard deviations of 0.298 and 0.292 respectively.</p>
+
+<p>Fixing the random seed matters more here than it might appear. As the results show, the two leading models are separated by 0.0002 in MAE. Without a fixed seed, each run would draw a different partition, and a gap that small would be entirely swamped by which books happened to fall into the test set. The comparison would then be measuring split noise rather than model quality. The fixed seed also means anyone re-running the notebook reproduces these exact figures.</p>
+
+<p>I did not stratify the split. Stratification preserves class proportions in classification problems, but the target here is continuous and there are no classes to balance. Given how tightly ratings cluster, a plain random split yields train and test distributions that are already closely matched.</p>
+
+<p>Four regressors were compared, chosen to span a range of model complexity:</p>
+
+<ul>
+  <li><strong>Linear Regression</strong> — the interpretable baseline. It assumes the relationship is linear and additive, so it cannot capture interactions such as page count mattering only for certain publishers.</li>
+  <li><strong>Decision Tree</strong> — captures non-linearity and interactions natively, but a single unpruned tree readily memorises the training set.</li>
+  <li><strong>Random Forest</strong> — many trees on bootstrap samples, each seeing a random feature subset, averaged. Since individual trees overfit in uncorrelated ways, averaging reduces variance.</li>
+  <li><strong>Gradient Boosting</strong> — trees fitted sequentially, each trained on the residuals of the ensemble so far. Typically strong on tabular data, at the cost of more sensitive tuning.</li>
+</ul>
+
+<p>All four were fitted with scikit-learn defaults on the identical training split and scored on the identical test split, using three metrics. <strong>MAE</strong> gives the average error in rating points and is the most directly interpretable. <strong>RMSE</strong> penalises large errors more heavily, so the gap between it and MAE indicates whether a model makes occasional bad misses. <strong>R²</strong> measures the fraction of target variance explained, where 0 means performance equivalent to always predicting the mean.</p>
+
+<h2 class="pagebreak">3. Results</h2>
+
+<h3>3.1 Model comparison</h3>
+
+<table>
+  <tr><th>Model</th><th class="num">MAE</th><th class="num">RMSE</th><th class="num">R²</th></tr>
+  <tr class="win"><td>Gradient Boosting</td><td class="num">0.1983</td><td class="num">0.2689</td><td class="num">0.1504</td></tr>
+  <tr><td>Random Forest</td><td class="num">0.1981</td><td class="num">0.2705</td><td class="num">0.1398</td></tr>
+  <tr><td>Linear Regression</td><td class="num">0.2122</td><td class="num">0.2831</td><td class="num">0.0580</td></tr>
+  <tr><td>Decision Tree</td><td class="num">0.2819</td><td class="num">0.3790</td><td class="num">−0.6878</td></tr>
+</table>
+<p class="caption">Performance on the held-out test set (2,220 books), 80/20 split, <code>random_state=42</code>.</p>
+
+<p>The ordering matches what the theory predicts, which is reassuring, but two entries deserve comment.</p>
+
+<p>The <strong>Decision Tree's negative R²</strong> is the most striking number in the table. A negative R² means the model performed <em>worse than always predicting the training mean</em> — it would have been better to ignore every feature and return 3.94 for every book. This is textbook overfitting. Left unpruned, the tree kept splitting until its leaves were nearly pure on the training data, fitting noise specific to those 8,876 books. Its MAE is 42% worse than the winner's. The value of including it is precisely that it demonstrates why the ensembles exist.</p>
+
+<p>The <strong>Gradient Boosting versus Random Forest</strong> comparison is genuinely close, and worth being precise about, since Random Forest actually wins on MAE — 0.1981 against 0.1983. That gap is 0.0002 of a rating point, which is not a meaningful difference. But Gradient Boosting is clearly ahead on the other two metrics: RMSE of 0.2689 against 0.2705, and R² of 0.1504 against 0.1398.</p>
+
+<p>The pattern is informative. When two models tie on MAE but one leads on RMSE, the difference lies in the tails, since RMSE squares the errors before averaging and so weights large misses more heavily. Both models are equally accurate on the typical book; Gradient Boosting makes fewer <em>badly</em> wrong predictions. For an application that returns a single number to a user, avoiding the occasional large error is more valuable than a fourth-decimal-place improvement in the average, so <strong>Gradient Boosting was selected</strong>.</p>
+
+<p>Linear Regression's weak R² of 0.058 should be read with a caveat I raised earlier. Part of its disadvantage is real — the underlying relationships are not linear and additive — but part is self-inflicted, since it was handed label-encoded publisher and language columns whose arbitrary integer ordering it has no way to interpret correctly. A fairer linear baseline would use one-hot or target encoding for those columns. I would expect it to improve, though not to the point of overtaking the ensembles.</p>
+
+<h3>3.2 What the model actually learned</h3>
+
+<table>
+  <tr><th>Feature</th><th class="num">Importance</th></tr>
+  <tr><td><code>num_pages</code></td><td class="num">0.2524</td></tr>
+  <tr><td><code>ratings_count</code></td><td class="num">0.1878</td></tr>
+  <tr><td><code>title_length</code></td><td class="num">0.1776</td></tr>
+  <tr><td><code>publisher_encoded</code></td><td class="num">0.1615</td></tr>
+  <tr><td><code>publication_year</code></td><td class="num">0.0644</td></tr>
+  <tr><td><code>author_count</code></td><td class="num">0.0582</td></tr>
+  <tr><td><code>text_reviews_count</code></td><td class="num">0.0549</td></tr>
+  <tr><td><code>language_code_encoded</code></td><td class="num">0.0364</td></tr>
+  <tr><td><code>pages_missing_flag</code></td><td class="num">0.0068</td></tr>
+</table>
+<p class="caption">Gradient Boosting feature importances, summing to 1.0.</p>
+
+<p>Page count dominates at 0.25, which surprised me until I stopped reading it as "longer books are better." Page count is really a proxy for <em>format</em>. Books of 80 pages, 300 pages, and 1,200 pages tend to be different kinds of object — children's books, novels, and reference or omnibus editions respectively — and those categories genuinely do attract different rating behaviour. The tree is using length to infer category.</p>
+
+<p><code>ratings_count</code> at 0.19 requires the most care to interpret, and it is where a causal reading would go badly wrong. The model has <em>not</em> discovered that accumulating more ratings raises a book's score. At least three non-causal explanations fit better. There is confounding, in that genuinely good books attract more readers and therefore more ratings, so quality drives both. There is selection, in that readers pick books they expect to like, so a widely read book draws a self-selected and more favourable audience. And there is statistical stabilisation: a book with eight ratings can easily average 4.9 or 2.1 by chance and so populates the extremes, whereas a book with 80,000 ratings is pinned near the population mean. The model may largely be learning that last effect — that low <code>ratings_count</code> predicts high variance rather than high quality.</p>
+
+<p><code>title_length</code> at 0.18 is higher than I expected for what is, on its face, a trivial feature. My reading is that it captures series and edition conventions rather than anything about prose. Long titles tend to belong to instalments in a series with subtitles and volume markers, or to academic works with descriptive subtitles, and both groups have distinctive rating profiles.</p>
+
+<p>The pattern across the whole table is consistent: the model relies on <em>how big, how visible, whose imprint, and what the title looks like</em>. Every one of those remains metadata. None of them is quality. That leads directly to the interpretation of the headline result.</p>
+
+<h3>3.3 Interpreting an R² of 0.15</h3>
+
+<p>The selected model explains about 15% of the variance in book ratings, and leaves roughly 85% unexplained. I want to argue that this is the correct result rather than a disappointing one.</p>
+
+<p>What drives a book's rating is the reading experience — the prose, the plot, the characters, the ending, whether it arrived at the right cultural moment. None of that is present anywhere in this dataset. There is no text, no genre label, no blurb, not even a subject tag. The model is being asked to predict subjective quality from the shipping label rather than the contents of the box.</p>
+
+<p>Seen that way, 15% is a reasonable haul. It means metadata is not <em>completely</em> uninformative: format, imprint, and visibility carry some real signal about how a book will be received. But it also means the ceiling for this feature set is low, and no amount of hyperparameter tuning will move it much, because the limitation is in the data rather than the algorithm.</p>
+
+<p>It is also worth noting what a much higher number would have implied. Had I reported an R² of 0.9 from these nine features, the correct response would be suspicion rather than congratulation — that pattern usually indicates target leakage, where information derived from the target has crept into the features. A modest R² with a coherent account of why it is modest is the more defensible outcome.</p>
+
+<p>In practical terms: MAE of 0.198 means predictions land within about 0.2 rating points of the truth on average. That sounds respectable, and for many uses it is. But the honest comparison is against the naive baseline of always predicting the mean, and since ratings cluster so tightly around 3.9, that baseline is already fairly accurate. The model's real contribution is the 15% of variation it captures beyond it — useful for ranking or triage, not for confidently scoring an individual title.</p>
+
+<h2 class="pagebreak">4. Deployment</h2>
+
+<p>The selected model is served through a Streamlit application (<code>app.py</code>) that accepts book metadata and returns a predicted rating.</p>
+
+<h3>4.1 The problem deployment has to solve</h3>
+
+<p>The central engineering challenge is that the model does not understand books — it understands a nine-column numeric row assembled in a specific order by specific encoders. A user, reasonably, wants to type "Scholastic Inc." rather than the integer 1,847. Everything between those two representations has to be reproduced <em>exactly</em> as it was at training time.</p>
+
+<p>The obvious approach — save the model, re-derive the preprocessing in the app — is a trap. If the app recomputes the imputation median from a different snapshot of the data, or assembles the feature columns in a different order, nothing fails. No exception is raised. The app returns a plausible number between 1 and 5, formatted identically to a correct prediction, and every prediction it makes is quietly wrong.</p>
+
+<p>To prevent this, the notebook serialises a <em>bundle</em> rather than a bare model, saved to <code>models/book_rating_bundle.joblib</code>:</p>
+
+<pre><code>artifact = {
+    "model":              trained[best_name],      # Gradient Boosting
+    "language_encoder":   language_encoder,        # fitted LabelEncoder
+    "publisher_encoder":  publisher_encoder,       # fitted LabelEncoder
+    "feature_cols":       FEATURE_COLS,            # exact column order
+    "median_pages":       median_pages_value,      # 302.0, training-time median
+    "model_name":         best_name,
+    "fallback_language":  "eng",
+    "fallback_publisher": "Vintage",
+}</code></pre>
+
+<p>The app loads this bundle and derives all preprocessing from it. The column ordering in particular is enforced by indexing the constructed row with <code>bundle["feature_cols"]</code>, so a mismatch raises an error rather than silently transposing columns.</p>
+
+<h3>4.2 Handling books the model has never seen</h3>
+
+<p>A <code>LabelEncoder</code> holds a fixed set of categories from training. Passing it an unseen publisher raises <code>ValueError: y contains previously unseen labels</code>. Since the app accepts free-text input, this is a routine occurrence rather than an edge case — any new or small independent press triggers it.</p>
+
+<p>The app maps unknown categories to a frequent training category (<code>eng</code> for language, <code>Vintage</code> for publisher) and <em>displays a warning stating that the substitution occurred</em>. The warning is the essential half. Substituting silently would reintroduce exactly the failure mode described above, where the user cannot distinguish an approximated prediction from a genuine one. This way the app stays usable while remaining honest about the approximation.</p>
+
+<h3>4.3 The interface</h3>
+
+<p>The form collects the raw fields a person would actually know: title, authors, language code, page count, ratings count, text reviews count, publisher, and publication date. Feature engineering happens inside the app immediately before prediction. Three conveniences were added on top:</p>
+
+<ul>
+  <li>An <strong>OpenLibrary lookup</strong> that searches by title or ISBN and auto-fills page count, publisher, author line, and publication year, so a user need not hunt down the catalogue details by hand.</li>
+  <li>An <strong>expandable panel</strong> showing the exact engineered feature row the model received, which makes the prediction inspectable rather than opaque.</li>
+  <li><strong>Sensible defaults</strong> pre-filled in every field, so the app demonstrates itself on first load without any input.</li>
+</ul>
+
+<p>One limitation should be stated plainly: OpenLibrary does not expose rating volumes, so when the lookup is used, <code>ratings_count</code> and <code>text_reviews_count</code> are filled with placeholder values rather than real figures. Since <code>ratings_count</code> is the model's second most important feature, a prediction from an auto-filled record is a demonstration of the interface rather than a meaningful estimate for that specific book. Entering real engagement figures manually gives a genuine prediction.</p>
+
+<div class="figure">
+  <div class="placeholder">
+    [ Insert screenshot of the running Streamlit app here — form filled in,<br>
+    with the predicted rating displayed ]
+  </div>
+  <p class="caption">Figure 1: The Streamlit interface returning a prediction for a sample book.</p>
+</div>
+
+<h3>4.4 Running the project</h3>
+
+<pre><code>git clone https://github.com/NadavaluruSashank/Book-Rating-Prediction.git
+cd Book-Rating-Prediction
+python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r requirements.txt
+streamlit run app.py</code></pre>
+
+<p>A pre-trained bundle is committed to the repository, so the app runs without re-training. <code>requirements.txt</code> pins <code>scikit-learn==1.9.0</code>, the version that produced the bundle, since loading a pickled estimator under a different version produces compatibility warnings and is not guaranteed to behave identically.</p>
+
+<h2>5. Conclusion</h2>
+
+<p>This project built a complete pipeline from a raw, unclean CSV through to a deployed web application. Gradient Boosting was selected over three alternatives, achieving an MAE of 0.198 and an R² of 0.150 on held-out data, and is served through a Streamlit interface that reuses the exact training-time preprocessing.</p>
+
+<p>The most valuable thing I took from it was not the model. It was that the reasoning behind the cleaning decisions mattered more than the choice of algorithm. Recognising that zeros in this file encode two entirely different kinds of missingness — an absent label in one column, an unrecorded attribute in another — changed what the dataset was. Had I treated both the same way, either by dropping every zero or imputing every zero, the model would have trained on a subtly corrupted target and no metric would have revealed it.</p>
+
+<p>The second lesson concerns reporting a weak result. There was a real temptation to keep tuning until R² looked more impressive. But the constraint here is informational, not algorithmic: metadata simply does not contain most of what determines whether people enjoy a book. Recognising a ceiling imposed by the data, rather than chasing it with more complex models, seems to me the more useful skill.</p>
+
+<h3>Directions for improvement</h3>
+
+<p>Several avenues would likely raise performance, ordered by my estimate of their impact:</p>
+
+<ol>
+  <li><strong>Author-level features.</strong> The single largest omission. An author's mean rating across their other works would almost certainly be the strongest available predictor, since reception is highly consistent within an author's catalogue. The critical constraint is that such a feature must be computed within the training fold only — calculating it across the full dataset would leak test-set targets into training and produce an inflated, meaningless score.</li>
+  <li><strong>Text features from titles.</strong> <code>title_length</code> already ranks third despite discarding every actual word. TF-IDF over title tokens would capture genre signals — words like "Chronicles," "Handbook," or "Illustrated" carry real information about what kind of book it is.</li>
+  <li><strong>Better categorical encoding.</strong> Replacing label-encoded publisher with frequency or smoothed target encoding would preserve more signal than arbitrary integer codes without the dimensionality cost of one-hot, and would make the Linear Regression baseline a fair comparison.</li>
+  <li><strong>Hyperparameter tuning.</strong> Every model here used library defaults. A cross-validated search over <code>n_estimators</code>, <code>learning_rate</code>, and <code>max_depth</code>, and trying XGBoost or LightGBM, would yield incremental gains — though given the data ceiling I would expect single-digit percentage improvements rather than a transformation.</li>
+  <li><strong>Weighting by rating volume.</strong> A book with 12 ratings and one with 200,000 are treated identically in training, despite the first being far noisier. Weighting samples by <code>ratings_count</code>, or excluding books below a minimum threshold, would let the model learn from more reliable targets.</li>
+  <li><strong>Prediction intervals.</strong> Given the genuine uncertainty, returning "3.8 to 4.2" would be more honest to the user than a single point estimate presented to two decimal places.</li>
+</ol>
+
+<p>The broader conclusion is that the path to a materially better model runs through <em>richer data</em> — genre tags, descriptions, author histories, cover art — rather than through more sophisticated algorithms applied to the same twelve columns.</p>
+
+<h2>Repository</h2>
+
+<div class="repo">
+  <strong>GitHub:</strong> <a href="https://github.com/NadavaluruSashank/Book-Rating-Prediction">https://github.com/NadavaluruSashank/Book-Rating-Prediction</a>
+</div>
+
+<p>The repository contains the full Jupyter notebook with the complete pipeline, the Streamlit application source, the trained model bundle, the dataset, a README with setup instructions, and a pinned <code>requirements.txt</code> for reproduction.</p>
+
+<h2>References</h2>
+
+<ol>
+  <li>Pedregosa, F. et al. (2011). <em>Scikit-learn: Machine Learning in Python.</em> Journal of Machine Learning Research, 12, 2825–2830. <a href="https://scikit-learn.org/">https://scikit-learn.org/</a></li>
+  <li>The pandas development team. <em>pandas: powerful Python data analysis toolkit.</em> <a href="https://pandas.pydata.org/">https://pandas.pydata.org/</a></li>
+  <li>Streamlit Inc. <em>Streamlit documentation.</em> <a href="https://streamlit.io/">https://streamlit.io/</a></li>
+  <li>Friedman, J. H. (2001). <em>Greedy Function Approximation: A Gradient Boosting Machine.</em> Annals of Statistics, 29(5), 1189–1232.</li>
+  <li>Breiman, L. (2001). <em>Random Forests.</em> Machine Learning, 45(1), 5–32.</li>
+  <li>OpenLibrary Search API, used for the metadata auto-fill feature. <a href="https://openlibrary.org/developers/api">https://openlibrary.org/developers/api</a></li>
+</ol>
